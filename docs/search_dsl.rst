@@ -321,6 +321,15 @@ To specify the from/size parameters, use the Python slicing API:
   s = s[10:20]
   # {"from": 10, "size": 10}
 
+If you want to access all the documents matched by your query you can use the
+``scan`` method which uses the scan/scroll elasticsearch API:
+
+.. code:: python
+
+  for hit in s.scan():
+      print(hit.title)
+
+Note that in this case the results won't be sorted.
 
 Highlighting
 ~~~~~~~~~~~~
@@ -473,4 +482,27 @@ Aggregations are available through the ``aggregations`` property:
     for tag in response.aggregations.per_tag.buckets:
         print(tag.key, tag.max_lines.value)
     
+
+
+``MultiSearch``
+---------------
+
+If you need to execute multiple searches at the same time you can use the
+``MultiSearch`` class which will use the ``_msearch`` API::
+
+.. code:: python
+
+    from elasticsearch_dsl import MultiSearch, Search
+
+    ms = MultiSearch(index='blogs')
+
+    ms = ms.add(Search().filter('term', tags='python'))
+    ms = ms.add(Search().filter('term', tags='elasticsearch'))
+
+    responses = ms.execute()
+
+    for response in responses:
+        print("Results for query %r." % response.search.filter)
+        for hit in response:
+            print(hit.title)
 

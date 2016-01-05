@@ -8,6 +8,8 @@ Changelog
  * ``Search`` can now be iterated over to get back hits
  * ``Search`` now caches responses from Elasticsearch
  * ``DateHistogramFacet`` now defaults to returning empty intervals
+ * ``Search`` no longer accepts positional parameters
+ * Experimental ``MultiSearch`` API
 
 0.0.9 (2015-10-26)
 ------------------
