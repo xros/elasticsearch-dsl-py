@@ -1,4 +1,4 @@
-from elasticsearch_dsl import query, function, filter
+from elasticsearch_dsl import query, function
 
 from pytest import raises
 
@@ -27,6 +27,16 @@ def test_bool_to_dict():
     bool = query.Bool(must=[query.Match(f='value')], should=[])
 
     assert {"bool": {"must": [{"match": {"f": "value"}}]}} == bool.to_dict()
+
+def test_bool_from_dict_issue_318():
+    d = {
+        "bool": {
+            "must_not": {"match": {"field": "value"}}
+        }
+    }
+    q = query.Q(d)
+
+    assert q == ~query.Match(field='value')
 
 def test_repr():
     bool = query.Bool(must=[query.Match(f='value')], should=[])
@@ -234,7 +244,7 @@ def test_function_score_with_functions():
     assert {'function_score': {'functions': [{'script_score': {'script': "doc['comment_count'] * _score"}}]}} == q.to_dict()
 
 def test_function_score_with_no_function_is_boost_factor():
-    q = query.Q('function_score', functions=[query.SF({'weight': 20, 'filter': filter.F('term', f=42)})])
+    q = query.Q('function_score', functions=[query.SF({'weight': 20, 'filter': query.Q('term', f=42)})])
 
     assert {'function_score': {'functions': [{'filter': {'term': {'f': 42}}, 'weight': 20}]}} == q.to_dict()
 
@@ -244,7 +254,7 @@ def test_function_score_to_dict():
         query=query.Q('match', title='python'),
         functions=[
             query.SF('random_score'),
-            query.SF('field_value_factor', field='comment_count', filter=filter.F('term', tags='python'))
+            query.SF('field_value_factor', field='comment_count', filter=query.Q('term', tags='python'))
         ]
     )
 
@@ -264,7 +274,6 @@ def test_function_score_to_dict():
     }
     assert d == q.to_dict()
 
-
 def test_function_score_with_single_function():
     d = {
       'function_score': {
@@ -277,13 +286,12 @@ def test_function_score_with_single_function():
 
     q = query.Q(d)
     assert isinstance(q, query.FunctionScore)
-    assert isinstance(q.filter, filter.Term)
+    assert isinstance(q.filter, query.Term)
     assert len(q.functions) == 1
 
     sf = q.functions[0]
     assert isinstance(sf, function.ScriptScore)
     assert "doc['comment_count'] * _score" == sf.script
-
 
 def test_function_score_from_dict():
     d = {
@@ -305,12 +313,12 @@ def test_function_score_from_dict():
 
     q = query.Q(d)
     assert isinstance(q, query.FunctionScore)
-    assert isinstance(q.filter, filter.Term)
+    assert isinstance(q.filter, query.Term)
     assert len(q.functions) == 2
 
     sf = q.functions[0]
     assert isinstance(sf, function.ScriptScore)
-    assert isinstance(sf.filter, filter.Terms)
+    assert isinstance(sf.filter, query.Terms)
 
     sf = q.functions[1]
     assert isinstance(sf, function.BoostFactor)

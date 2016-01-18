@@ -2,31 +2,30 @@ from six import iteritems, string_types
 
 from elasticsearch.helpers import scan
 
-from .query import Q, EMPTY_QUERY, Filtered
-from .filter import F, EMPTY_FILTER
+from .query import Q, EMPTY_QUERY, Bool
 from .aggs import A, AggBase
 from .utils import DslBase
-from .result import Response, Result
+from .result import Response, Result, SuggestResponse
 from .connections import connections
 
-class BaseProxy(object):
+class QueryProxy(object):
     """
-    Simple proxy around DSL objects (queries and filters) that can be called
-    (to add query/filter) and also allows attribute access which is proxied to
-    the wrapped query/filter.
+    Simple proxy around DSL objects (queries) that can be called
+    (to add query/post_filter) and also allows attribute access which is proxied to
+    the wrapped query.
     """
     def __init__(self, search, attr_name):
         self._search = search
-        self._proxied = self._empty
+        self._proxied = EMPTY_QUERY
         self._attr_name = attr_name
 
     def __nonzero__(self):
-        return self._proxied != self._empty
+        return self._proxied != EMPTY_QUERY
     __bool__ = __nonzero__
 
     def __call__(self, *args, **kwargs):
         s = self._search._clone()
-        getattr(s, self._attr_name)._proxied += self._shortcut(*args, **kwargs)
+        getattr(s, self._attr_name)._proxied += Q(*args, **kwargs)
 
         # always return search to be chainable
         return s
@@ -36,9 +35,9 @@ class BaseProxy(object):
 
     def __setattr__(self, attr_name, value):
         if not attr_name.startswith('_'):
-            self._proxied = self._shortcut(self._proxied.to_dict())
+            self._proxied = Q(self._proxied.to_dict())
             setattr(self._proxied, attr_name, value)
-        super(BaseProxy, self).__setattr__(attr_name, value)
+        super(QueryProxy, self).__setattr__(attr_name, value)
 
 
 class ProxyDescriptor(object):
@@ -57,17 +56,7 @@ class ProxyDescriptor(object):
 
     def __set__(self, instance, value):
         proxy = getattr(instance, self._attr_name)
-        proxy._proxied = proxy._shortcut(value)
-
-
-class ProxyQuery(BaseProxy):
-    _empty = EMPTY_QUERY
-    _shortcut = staticmethod(Q)
-
-
-class ProxyFilter(BaseProxy):
-    _empty = EMPTY_FILTER
-    _shortcut = staticmethod(F)
+        proxy._proxied = Q(value)
 
 
 class AggsProxy(AggBase, DslBase):
@@ -204,7 +193,6 @@ class Request(object):
 
 class Search(Request):
     query = ProxyDescriptor('query')
-    filter = ProxyDescriptor('filter')
     post_filter = ProxyDescriptor('post_filter')
 
     def __init__(self, **kwargs):
@@ -229,9 +217,11 @@ class Search(Request):
         self._suggest = {}
         self._script_fields = {}
 
-        self._query_proxy = ProxyQuery(self, 'query')
-        self._filter_proxy = ProxyFilter(self, 'filter')
-        self._post_filter_proxy = ProxyFilter(self, 'post_filter')
+        self._query_proxy = QueryProxy(self, 'query')
+        self._post_filter_proxy = QueryProxy(self, 'post_filter')
+
+    def filter(self, *args, **kwargs):
+        return self.query(Bool(filter=[Q(*args, **kwargs)]))
 
     def __iter__(self):
         """
@@ -308,7 +298,7 @@ class Search(Request):
         s._highlight_opts = self._highlight_opts.copy()
         s._suggest = self._suggest.copy()
         s._script_fields = self._script_fields.copy()
-        for x in ('query', 'filter', 'post_filter'):
+        for x in ('query', 'post_filter'):
             getattr(s, x)._proxied = getattr(self, x)._proxied
 
         # copy top-level bucket definitions
@@ -325,11 +315,7 @@ class Search(Request):
         if 'query' in d:
             self.query._proxied = Q(d.pop('query'))
         if 'post_filter' in d:
-            self.post_filter._proxied = F(d.pop('post_filter'))
-
-        if isinstance(self.query._proxied, Filtered):
-            self.filter._proxied = self.query._proxied.filter
-            self.query._proxied = self.query._proxied.query
+            self.post_filter._proxied = Q(d.pop('post_filter'))
 
         aggs = d.pop('aggs', d.pop('aggregations', {}))
         if aggs:
@@ -513,17 +499,7 @@ class Search(Request):
 
         All additional keyword arguments will be included into the dictionary.
         """
-        if self.filter:
-            d = {
-              "query": {
-                "filtered": {
-                  "query": self.query.to_dict(),
-                  "filter": self.filter.to_dict()
-                }
-              }
-            }
-        else:
-            d = {"query": self.query.to_dict()}
+        d = {"query": self.query.to_dict()}
 
         if self.post_filter:
             d['post_filter'] = self.post_filter.to_dict()
@@ -595,6 +571,20 @@ class Search(Request):
                 callbacks=self._doc_type_map
             )
         return self._response
+
+    def execute_suggest(self):
+        """
+        Execute just the suggesters. Ignores all parts of the request that are
+        not relevant, including ``query`` and ``doc_type``.
+        """
+        es = connections.get_connection(self._using)
+        return SuggestResponse(
+            es.suggest(
+                index=self._index,
+                body=self._suggest,
+                **self._params
+            )
+        )
 
     def scan(self):
         """

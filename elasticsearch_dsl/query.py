@@ -1,4 +1,4 @@
-from .utils import DslBase, BoolMixin, _make_dsl_class
+from .utils import DslBase, _make_dsl_class
 from .function import SF, ScoreFunction
 
 __all__ = [
@@ -42,6 +42,31 @@ class Query(DslBase):
     _type_shortcut = staticmethod(Q)
     name = None
 
+    def __add__(self, other):
+        # make sure we give queries that know how to combine themselves
+        # preference
+        if hasattr(other, '__radd__'):
+            return other.__radd__(self)
+        return Bool(must=[self, other])
+
+    def __invert__(self):
+        return Bool(must_not=[self])
+
+    def __or__(self, other):
+        # make sure we give queries that know how to combine themselves
+        # preference
+        if hasattr(other, '__ror__'):
+            return other.__ror__(self)
+        return Bool(should=[self, other])
+
+    def __and__(self, other):
+        # make sure we give queries that know how to combine themselves
+        # preference
+        if hasattr(other, '__rand__'):
+            return other.__rand__(self)
+        return Bool(must=[self, other])
+
+
 class MatchAll(Query):
     name = 'match_all'
     def __add__(self, other):
@@ -53,7 +78,7 @@ class MatchAll(Query):
     __ror__ = __or__
 EMPTY_QUERY = MatchAll()
 
-class Bool(BoolMixin, Query):
+class Bool(Query):
     name = 'bool'
     _param_defs = {
         'must': {'type': 'query', 'multi': True},
@@ -62,14 +87,56 @@ class Bool(BoolMixin, Query):
         'filter': {'type': 'query', 'multi': True},
     }
 
+    def __add__(self, other):
+        q = self._clone()
+        if isinstance(other, Bool):
+            q.must += other.must
+            q.should += other.should
+            q.must_not += other.must_not
+            q.filter += other.filter
+        else:
+            q.must.append(other)
+        return q
+    __radd__ = __add__
+
+    def __or__(self, other):
+        for q in (self, other):
+            if isinstance(q, Bool) and len(q.should) == 1 and not any((q.must, q.must_not, q.filter)):
+                other = self if q is other else other
+                q = q._clone()
+                q.should.append(other)
+                return q
+
+        return Bool(should=[self, other])
+    __ror__ = __or__
+
+    def __invert__(self):
+        # special case for single negated query
+        if not (self.must or self.should or self.filter) and len(self.must_not) == 1:
+            return self.must_not[0]._clone()
+
+        # bol without should, just flip must and must_not
+        elif not self.should:
+            q = self._clone()
+            q.must, q.must_not = q.must_not, q.must
+            if q.filter:
+                q.filter = [Bool(must_not=q.filter)]
+            return q
+
+        # TODO: should -> must_not.append(Bool(should=self.should)) ??
+        # queries with should just invert normally
+        return super(Bool, self).__invert__()
+
     def __and__(self, other):
         q = self._clone()
-        if isinstance(other, self.__class__):
+        if isinstance(other, Bool):
             q.must += other.must
             q.must_not += other.must_not
+            q.filter += other.filter
             q.should = []
             for qx in (self, other):
-                min_should_match = getattr(qx, 'minimum_should_match', 0 if any((qx.must, qx.must_not)) else 1)
+                # TODO: percetages will fail here
+                min_should_match = getattr(qx, 'minimum_should_match', 0 if qx.must else 1)
                 # all subqueries are required
                 if len(qx.should) <= min_should_match:
                     q.must.extend(qx.should)
@@ -84,14 +151,12 @@ class Bool(BoolMixin, Query):
             q.must.append(other)
         return q
     __rand__ = __and__
-# register this as Bool for Query
-Query._bool = Bool
 
 class FunctionScore(Query):
     name = 'function_score'
     _param_defs = {
         'query': {'type': 'query'},
-        'filter': {'type': 'filter'},
+        'filter': {'type': 'query'},
         'functions': {'type': 'score_function', 'multi': True},
     }
 
@@ -108,9 +173,9 @@ class FunctionScore(Query):
 QUERIES = (
     # compound queries
     ('boosting', {'positive': {'type': 'query'}, 'negative': {'type': 'query'}}),
-    ('constant_score', {'query': {'type': 'query'}, 'filter': {'type': 'filter'}}),
+    ('constant_score', {'query': {'type': 'query'}, 'filter': {'type': 'query'}}),
     ('dis_max', {'queries': {'type': 'query', 'multi': True}}),
-    ('filtered', {'query': {'type': 'query'}, 'filter': {'type': 'filter'}}),
+    ('filtered', {'query': {'type': 'query'}, 'filter': {'type': 'query'}}),
     ('indices', {'query': {'type': 'query'}, 'no_match_query': {'type': 'query'}}),
 
     # relationship queries
@@ -131,11 +196,19 @@ QUERIES = (
     ('fuzzy', None),
     ('fuzzy_like_this', None),
     ('fuzzy_like_this_field', None),
+    ('geo_bounding_box', None),
+    ('geo_distance', None),
+    ('geo_distance_range', None),
+    ('geo_polygon', None),
     ('geo_shape', None),
+    ('geohash_cell', None),
     ('ids', None),
+    ('limit', None),
     ('match', None),
     ('match_phrase', None),
     ('match_phrase_prefix', None),
+    ('exists', None),
+    ('missing', None),
     ('more_like_this', None),
     ('more_like_this_field', None),
     ('multi_match', None),
@@ -149,6 +222,8 @@ QUERIES = (
     ('term', None),
     ('terms', None),
     ('wildcard', None),
+    ('script', None),
+    ('type', None),
 )
 
 # generate the query classes dynamicaly

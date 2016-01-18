@@ -79,7 +79,7 @@ iterate over the ``Search`` object:
     for hit in s:
         print(hit.title)
 
-Search results will be cached do subsequent calls to ``execute`` or trying to
+Search results will be cached. Subsequent calls to ``execute`` or trying to
 iterate over an already executed ``Search`` object will not trigger additional
 requests being sent to Elasticsearch. To force a request specify
 ``ignore_cache=True`` when calling ``execute``.
@@ -190,9 +190,25 @@ to directly construct the combined query:
 Filters
 ~~~~~~~
 
-Filters behave similarly to queries - just use the ``F`` shortcut and
-``.filter()`` method. When you use the ``.filter()`` method, the query will be
-automatically wrapped in a ``filtered`` query.
+
+If you want to add a query in a `filter context
+<https://www.elastic.co/guide/en/elasticsearch/reference/2.0/query-filter-context.html>`_
+you can use the ``filter()`` method to make things easier:
+
+.. code:: python
+
+    s = Search()
+    s = s.filter('terms', tags=['search', 'python'])
+
+Behind the scenes this will produce a ``Bool`` query and place the specified
+``terms`` query into its ``filter`` branch, making it equivalent to:
+
+.. code:: python
+
+    s = Search()
+    s = s.query('bool', filter=[Q('terms', tags=['search', 'python'])])
+
+
 
 If you want to use the post_filter element for faceted navigation, use the
 ``.post_filter()`` method.
@@ -208,7 +224,8 @@ To define an aggregation, you can use the ``A`` shortcut:
     A('terms', field='tags')
     # {"terms": {"field": "tags"}}
 
-To nest aggregations, you can use the ``.bucket()`` and ``.metric()`` methods:
+To nest aggregations, you can use the ``.bucket()``, ``.metric()`` and
+``.pipeline()`` methods:
 
 .. code:: python
 
@@ -248,23 +265,24 @@ or
 .. code:: python
 
     s = Search()
-    s.aggs.bucket('per_category', 'terms', field='category')\
-        .metric('clicks_per_category', 'sum', field='clicks')\
-        .bucket('tags_per_category', 'terms', field='tags')
+    s.aggs.bucket('articles_per_day', 'date_histogram', field='publish_date', interval='day')\
+        .metric('clicks_per_day', 'sum', field='clicks')\
+        .pipeline('moving_click_average', 'moving_avg', buckets_path='clicks_per_day')\
+        .bucket('tags_per_day', 'terms', field='tags')
 
     s.to_dict()
     # {
-    #   'aggs': {
-    #     'per_category': {
-    #       'terms': {'field': 'category'},
-    #       'aggs': {
-    #         'clicks_per_category': {'sum': {'field': 'clicks'}},
-    #         'tags_per_category': {'terms': {'field': 'tags'}}
+    #   "aggs": {
+    #     "articles_per_day": {
+    #       "date_histogram": { "interval": "day", "field": "publish_date" },
+    #       "aggs": {
+    #         "clicks_per_day": { "sum": { "field": "clicks" } },
+    #         "moving_click_average": { "moving_avg": { "buckets_path": "clicks_per_day" } },
+    #         "tags_per_day": { "terms": { "field": "tags" } }
     #       }
     #     }
     #   }
     # }
-
 
 You can access an existing bucket by its name:
 
@@ -370,6 +388,16 @@ To specify a suggest request on your ``Search`` object use the ``suggest`` metho
 The first argument is the name of the suggestions (name under which it will be
 returned), second is the actual text you wish the suggester to work on and the
 keyword arguments will be added to the suggest's json as-is.
+
+If you only wish to run the suggestion part of the search (via the ``_suggest``
+endpoint) you can do so via ``execute_suggest``:
+
+.. code:: python
+
+    s = s.suggest('my_suggestion', 'pyhton', term={'field': 'title'})
+    suggestions = s.execute_suggest()
+
+    print(suggestions.my_suggestion)
 
 Extra properties and parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -488,7 +516,7 @@ Aggregations are available through the ``aggregations`` property:
 ---------------
 
 If you need to execute multiple searches at the same time you can use the
-``MultiSearch`` class which will use the ``_msearch`` API::
+``MultiSearch`` class which will use the ``_msearch`` API:
 
 .. code:: python
 
@@ -502,7 +530,6 @@ If you need to execute multiple searches at the same time you can use the
     responses = ms.execute()
 
     for response in responses:
-        print("Results for query %r." % response.search.filter)
+        print("Results for query %r." % response.search.query)
         for hit in response:
             print(hit.title)
-
