@@ -37,7 +37,7 @@ instantiating the ``Search`` object:
 
     client = Elasticsearch()
 
-    s = Search(client)
+    s = Search(using=client)
 
 You can also define the client at a later time (for more options see the
 ~:ref:`connections` chapter):
@@ -103,7 +103,7 @@ parameters as keyword arguments:
 
     from elasticsearch_dsl.query import MultiMatch
 
-    # {"multi_match": {"query": "python django", "fields": ["title", "body"]}
+    # {"multi_match": {"query": "python django", "fields": ["title", "body"]}}
     MultiMatch(query='python django', fields=['title', 'body'])
 
 You can use the ``Q`` shortcut to construct the instance using a name with
@@ -112,7 +112,7 @@ parameters or the raw ``dict``:
 .. code:: python
 
     Q("multi_match", query='python django', fields=['title', 'body'])
-    Q({"multi_match": {"query": "python django", "fields": ["title", "body"]})
+    Q({"multi_match": {"query": "python django", "fields": ["title", "body"]}})
 
 To add the query to the ``Search`` object, use the ``.query()`` method:
 

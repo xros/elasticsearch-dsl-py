@@ -49,7 +49,10 @@ class Field(DslBase):
         self._required = kwargs.pop('required', False)
         super(Field, self).__init__(*args, **kwargs)
 
-    def _to_python(self, data):
+    def _serialize(self, data):
+        return data
+
+    def _deserialize(self, data):
         return data
 
     def _empty(self):
@@ -60,15 +63,21 @@ class Field(DslBase):
             return AttrList([])
         return self._empty()
 
-    def to_python(self, data):
+    def serialize(self, data):
         if isinstance(data, (list, AttrList)):
-            data[:] = map(self._to_python, data)
+            data[:] = map(self._serialize, data)
             return data
-        return self._to_python(data)
+        return self._serialize(data)
+
+    def deserialize(self, data):
+        if isinstance(data, (list, AttrList)):
+            data[:] = map(self._deserialize, data)
+            return data
+        return self._deserialize(data)
 
     def clean(self, data):
         if data is not None:
-            data = self.to_python(data)
+            data = self.deserialize(data)
         # FIXME: numeric 0
         if not data and self._required:
             raise ValidationException("Value required for this field.")
@@ -79,6 +88,18 @@ class Field(DslBase):
         name, value = d.popitem()
         value['type'] = name
         return value
+
+class CustomField(Field):
+    name = 'custom'
+    _coerce = True
+
+    def to_dict(self):
+        if isinstance(self.builtin_type, Field):
+            return self.builtin_type.to_dict()
+
+        d = super(CustomField, self).to_dict()
+        d['type'] = self.builtin_type
+        return d
 
 class InnerObjectWrapper(ObjectBase):
     def __init__(self, mapping, **kwargs):
@@ -142,7 +163,7 @@ class InnerObject(object):
                 continue
             our[name] = other[name]
 
-    def _to_python(self, data):
+    def _deserialize(self, data):
         if data is None:
             return None
         # don't wrap already wrapped data
@@ -150,13 +171,16 @@ class InnerObject(object):
             return data
 
         if isinstance(data, (list, AttrList)):
-            data[:] = list(map(self._to_python, data))
+            data[:] = list(map(self._deserialize, data))
             return data
 
         if isinstance(data, AttrDict):
             data = data._d_
 
         return self._doc_class(self.properties, **data)
+
+    def _serialize(self, data):
+        return data.to_dict()
 
     def clean(self, data):
         data = super(InnerObject, self).clean(data)
@@ -185,7 +209,7 @@ class Date(Field):
     name = 'date'
     _coerce = True
 
-    def _to_python(self, data):
+    def _deserialize(self, data):
         if not data:
             return None
         if isinstance(data, date):

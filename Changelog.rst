@@ -3,8 +3,29 @@
 Changelog
 =========
 
-0.0.10 (dev)
-------------
+2.0.0 (dev)
+-----------
+Compatibility with Eelasticsearch 2.x:
+
+ * Filters have been removed
+ * ``Search.filter`` is just a shortcut to add queries in filter context
+ * support for pipeline aggregations added
+
+Backwards incompatible changes:
+
+ * list of analysis objects and classes was removed, any string used as
+   tokenizer, char or token filter or analyzer will be treated as a builtin
+ * internal method ``Field.to_python`` has been renamed to ``deserialize`` and
+   an optional serialization mechanic for fields has been added.
+ * Custom response class is now set by ``response_class`` method instead of a
+   kwarg to ``Search.execute``
+
+Other changes:
+
+ * ``FacetedSearch`` now supports pagination via slicing
+
+0.0.10 (2016-01-24)
+-------------------
  * ``Search`` can now be iterated over to get back hits
  * ``Search`` now caches responses from Elasticsearch
  * ``DateHistogramFacet`` now defaults to returning empty intervals
