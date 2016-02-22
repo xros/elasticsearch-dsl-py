@@ -3,7 +3,7 @@ import sys
 from os.path import join, dirname
 from setuptools import setup, find_packages
 
-VERSION = (2, 0, 0, 'dev')
+VERSION = (2, 0, 0)
 __version__ = VERSION
 __versionstr__ = '.'.join(map(str, VERSION))
 
@@ -14,7 +14,7 @@ f.close()
 install_requires = [
     'six',
     'python-dateutil',
-    'elasticsearch>=2.0.0, <3.0.0'
+    'elasticsearch>=2.0.0,<3.0.0'
 ]
 tests_require = [
     "mock",
