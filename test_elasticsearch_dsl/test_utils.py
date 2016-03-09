@@ -1,4 +1,19 @@
+import pickle
+
 from elasticsearch_dsl import utils, serializer
+
+def test_attrdict_pickle():
+    ad = utils.AttrDict({})
+
+    pickled_ad = pickle.dumps(ad)
+    assert ad == pickle.loads(pickled_ad)
+
+
+def test_attrlist_pickle():
+    al = utils.AttrList([])
+
+    pickled_al = pickle.dumps(al)
+    assert al == pickle.loads(pickled_al)
 
 def test_merge():
     a = {'a': {'b': 42, 'c': 47}}

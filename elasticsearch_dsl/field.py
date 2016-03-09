@@ -1,6 +1,7 @@
 from datetime import date
 from dateutil import parser
 from six import itervalues
+from six.moves import map
 
 from .utils import DslBase, _make_dsl_class, ObjectBase, AttrDict, AttrList
 from .exceptions import ValidationException
@@ -65,8 +66,7 @@ class Field(DslBase):
 
     def serialize(self, data):
         if isinstance(data, (list, AttrList)):
-            data[:] = map(self._serialize, data)
-            return data
+            return list(map(self._serialize, data))
         return self._serialize(data)
 
     def deserialize(self, data):
@@ -126,9 +126,12 @@ class InnerObject(object):
     def _empty(self):
         return self._doc_class(self.properties)
 
+    def _wrap(self, data):
+        return self._doc_class(self.properties, **data)
+
     def empty(self):
         if self._multi:
-            return AttrList([], lambda d: self._doc_class(self.properties, **d))
+            return AttrList([], self._wrap)
         return self._empty()
 
     def __getitem__(self, name):
@@ -177,7 +180,7 @@ class InnerObject(object):
         if isinstance(data, AttrDict):
             data = data._d_
 
-        return self._doc_class(self.properties, **data)
+        return self._wrap(data)
 
     def _serialize(self, data):
         return data.to_dict()

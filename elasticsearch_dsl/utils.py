@@ -63,6 +63,12 @@ class AttrList(object):
     def __getattr__(self, name):
         return getattr(self._l_, name)
 
+    def __getstate__(self):
+        return (self._l_, self._obj_wrapper)
+
+    def __setstate__(self, state):
+        self._l_, self._obj_wrapper = state
+
 
 class AttrDict(object):
     """
@@ -96,6 +102,12 @@ class AttrDict(object):
         if len(r) > 60:
             r = r[:60] + '...}'
         return r
+
+    def __getstate__(self):
+        return (self._d_, )
+
+    def __setstate__(self, state):
+        super(AttrDict, self).__setattr__('_d_', state[0])
 
     def __getattr__(self, attr_name):
         try:
