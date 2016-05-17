@@ -228,13 +228,24 @@ class String(Field):
     _param_defs = {
         'fields': {'type': 'field', 'hash': True},
         'analyzer': {'type': 'analyzer'},
-        'index_analyzer': {'type': 'analyzer'},
         'search_analyzer': {'type': 'analyzer'},
     }
     name = 'string'
 
     def _empty(self):
         return ''
+
+
+class Boolean(Field):
+    name = 'boolean'
+
+    def clean(self, data):
+        if data is not None:
+            data = self.deserialize(data)
+        if data is None and self._required:
+            raise ValidationException("Value required for this field.")
+        return data
+
 
 FIELDS = (
     'float',
@@ -243,7 +254,6 @@ FIELDS = (
     'short',
     'integer',
     'long',
-    'boolean',
     'ip',
     'attachment',
     'geo_point',
@@ -251,7 +261,7 @@ FIELDS = (
     'completion',
 )
 
-# generate the query classes dynamicaly
+# generate the query classes dynamically
 for f in FIELDS:
     fclass = _make_dsl_class(Field, f)
     globals()[fclass.__name__] = fclass

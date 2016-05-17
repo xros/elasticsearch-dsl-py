@@ -108,13 +108,18 @@ If you want to create a model-like wrapper around your documents, use the
 .. code:: python
 
     from datetime import datetime
-    from elasticsearch_dsl import DocType, String, Date, Nested, Boolean, analyzer
+    from elasticsearch_dsl import DocType, String, Date, Nested, Boolean, \
+        analyzer, InnerObjectWrapper
 
     html_strip = analyzer('html_strip',
         tokenizer="standard",
         filter=["standard", "lowercase", "stop", "snowball"],
         char_filter=["html_strip"]
     )
+
+    class Comment(InnerObjectWrapper):
+        def age(self):
+            return datetime.now() - self.created_at
 
     class Post(DocType):
         title = String()
@@ -127,6 +132,7 @@ If you want to create a model-like wrapper around your documents, use the
         )
 
         comments = Nested(
+            doc_class=Comment,
             properties={
                 'author': String(fields={'raw': String(index='not_analyzed')}),
                 'content': String(analyzer='snowball'),
@@ -215,12 +221,34 @@ To retrieve an existing document use the ``get`` class method:
 
 If the document is not found in elasticsearch an exception
 (``elasticsearch.NotFoundError``) will be raised. If you wish to return
-``None`` instead just pass in ``ignore=404`` to supress the exception:
+``None`` instead just pass in ``ignore=404`` to suppress the exception:
 
 .. code:: python
 
     p = Post.get(id='not-in-es', ignore=404)
     p is None
+
+When you wish to retrive multiple documents at the same time by their ``id``
+you can use the ``mget`` method:
+
+.. code:: python
+
+    posts = Post.mget([42, 47, 256])
+
+``mget`` will, by default, raise a ``NotFoundError`` if any of the documents
+wasn't found and ``RequestError`` if any of the document had resulted in error.
+You can control this behavior by setting parameters:
+
+``raise_on_error``
+  If ``True`` (default) then any error will cause an exception to be raised.
+  Otherwise all documents containing errors will be treated as missing.
+
+``missing``
+  Can have three possible values: ``'none'`` (default), ``'raise'`` and
+  ``'skip'``. If a document is missing or errored it will either be replaced
+  with ``None``, an exception will be raised or the document will be skipped in
+  the output list entirely.
+
 
 All the information about the ``DocType``, including its ``Mapping`` can be
 accessed through the ``_doc_type`` attribute of the class:
@@ -230,7 +258,7 @@ accessed through the ``_doc_type`` attribute of the class:
     # name of the type and index in elasticsearch
     Post._doc_type.name
     Post._doc_type.index
-    
+
     # the raw Mapping object
     Post._doc_type.mapping
 

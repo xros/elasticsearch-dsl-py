@@ -1,6 +1,7 @@
 from six import iteritems, string_types
 
 from elasticsearch.helpers import scan
+from elasticsearch.exceptions import TransportError
 
 from .query import Q, EMPTY_QUERY, Bool
 from .aggs import A, AggBase
@@ -97,7 +98,7 @@ class Request(object):
         Specify query params to be used when executing the search. All the
         keyword arguments will override the current values. See
         http://elasticsearch-py.readthedocs.org/en/master/api.html#elasticsearch.Elasticsearch.search
-        for all availible parameters.
+        for all available parameters.
 
         Example::
 
@@ -110,7 +111,7 @@ class Request(object):
 
     def index(self, *index):
         """
-        Set the index for the search. If called empty it will rmove all information.
+        Set the index for the search. If called empty it will remove all information.
 
         Example:
 
@@ -203,7 +204,7 @@ class Search(Request):
         :arg index: limit the search to index
         :arg doc_type: only query this type.
 
-        All the paramters supplied (or omitted) at creation type can be later
+        All the parameters supplied (or omitted) at creation type can be later
         overriden by methods (`using`, `index` and `doc_type` respectively).
         """
         super(Search, self).__init__(**kwargs)
@@ -356,6 +357,7 @@ class Search(Request):
         if 'script_fields' in d:
             self._script_fields = d.pop('script_fields')
         self._extra = d
+        return self
 
     def script_fields(self, **kwargs):
         """
@@ -502,7 +504,7 @@ class Search(Request):
 
     def highlight(self, *fields, **kwargs):
         """
-        Request highliting of some fields. All keyword arguments passed in will be
+        Request highlighting of some fields. All keyword arguments passed in will be
         used as parameters. Example::
 
             Search().highlight('title', 'body', fragment_size=50)
@@ -534,7 +536,7 @@ class Search(Request):
         All keyword arguments will be added to the suggestions body. For example::
 
             s = Search()
-            s = s.suggest('suggestion-1', 'Elasticserach', term={'field': 'body'})
+            s = s.suggest('suggestion-1', 'Elasticsearch', term={'field': 'body'})
         """
         s = self._clone()
         s._suggest[name] = {'text': text}
@@ -699,7 +701,7 @@ class MultiSearch(Request):
 
         return out
 
-    def execute(self, ignore_cache=False):
+    def execute(self, ignore_cache=False, raise_on_error=True):
         if ignore_cache or not hasattr(self, '_response'):
             es = connections.get_connection(self._using)
 
@@ -712,8 +714,14 @@ class MultiSearch(Request):
 
             out = []
             for s, r in zip(self._searches, responses['responses']):
-                r = Response(r, callbacks=s._doc_type_map)
-                r.search = s
+                if r.get('error', False):
+                    print(r)
+                    if raise_on_error:
+                        raise TransportError('N/A', r['error']['type'], r['error'])
+                    r = None
+                else:
+                    r = Response(r, callbacks=s._doc_type_map)
+                    r.search = s
                 out.append(r)
 
             self._response = out

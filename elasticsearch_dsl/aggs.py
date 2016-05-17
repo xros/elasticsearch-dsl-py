@@ -8,7 +8,7 @@ __all__ = [
     'PercenileRanks', 'ScriptedMetric', 'Stats', 'Sum', 'TopHits', 'ValueCount',
     'AvgBucket', 'BucketScript', 'BucketSelector', 'CumulativeSum',
     'Derivative', 'ExtendedStatsBucket', 'MaxBucket', 'MinBucket', 'MovingAvg',
-    'PercentilesBucket', 'SerialDiff', 'StatsBucket', 'SumBucket'
+    'PercentilesBucket', 'SerialDiff', 'StatsBucket', 'SumBucket', 'Sampler'
 ]
 
 
@@ -26,7 +26,7 @@ def A(name_or_agg, filter=None, **params):
         agg = name_or_agg.copy()
         # pop out nested aggs
         aggs = agg.pop('aggs', None)
-        # should be {"terms": {"fied": "tags"}}
+        # should be {"terms": {"field": "tags"}}
         if len(agg) != 1:
             raise ValueError('A() can only accept dict with an aggregation ({"terms": {...}}). '
                  'Instead it got (%r)' % name_or_agg)
@@ -49,6 +49,12 @@ class Agg(DslBase):
     _type_name = 'agg'
     _type_shortcut = staticmethod(A)
     name = None
+    def to_dict(self):
+        d = super(Agg, self).to_dict()
+        if 'meta' in d[self.name]:
+            d['meta'] = d[self.name].pop('meta')
+        return d
+
 
 class AggBase(object):
     _param_defs = {
@@ -138,6 +144,7 @@ AGGS = (
     (Bucket, 'reverse_nested', None),
     (Bucket, 'significant_terms', None),
     (Bucket, 'terms', None),
+    (Bucket, 'sampler', None),
 
     (Agg, 'avg', None),
     (Agg, 'cardinality', None),
@@ -168,7 +175,7 @@ AGGS = (
     (Pipeline, 'sum_bucket', None),
 )
 
-# generate the aggregation classes dynamicaly
+# generate the aggregation classes dynamically
 for base, fname, params_def in AGGS:
     # don't override the params def from AggBase
     if params_def:

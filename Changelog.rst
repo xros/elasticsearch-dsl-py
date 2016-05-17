@@ -3,11 +3,17 @@
 Changelog
 =========
 
+2.1.0 (dev)
+-----------
+ * ``inner_hits`` are now also wrapped in ``Response``
+ * ``+`` operator is deprecated, ``.query()`` now uses ``&`` to combine queries
+
 2.0.0 (2016-02-18)
 ------------------
-Compatibility with Eelasticsearch 2.x:
+Compatibility with Elasticsearch 2.x:
 
- * Filters have been removed and additional queries have been added
+ * Filters have been removed and additional queries have been added. Instead of
+   ``F`` objects you can now use ``Q``.
  * ``Search.filter`` is now just a shortcut to add queries in filter context
  * support for pipeline aggregations added
 

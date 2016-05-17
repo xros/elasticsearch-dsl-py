@@ -1,6 +1,11 @@
-from elasticsearch_dsl import Search, DocType, Date, String, MultiSearch
+from elasticsearch import TransportError
+
+from elasticsearch_dsl import Search, DocType, Date, String, MultiSearch, \
+    MetaField, Index, Q
 
 from .test_data import DATA
+
+from pytest import raises
 
 class Repository(DocType):
     created_at = Date()
@@ -10,6 +15,23 @@ class Repository(DocType):
     class Meta:
         index = 'git'
         doc_type = 'repos'
+
+class Commit(DocType):
+    class Meta:
+        doc_type = 'commits'
+        index = 'git'
+        parent = MetaField(type='repos')
+
+def test_inner_hits_are_wrapped_in_response(data_client):
+    i = Index('git')
+    i.doc_type(Repository)
+    i.doc_type(Commit)
+    s = i.search()[0:1].doc_type(Commit).query('has_parent', type='repos', inner_hits={}, query=Q('match_all'))
+    response = s.execute()
+
+    commit = response.hits[0]
+    assert isinstance(commit.meta.inner_hits.repos, response.__class__)
+    assert isinstance(commit.meta.inner_hits.repos[0], Repository)
 
 def test_suggest_can_be_run_separately(data_client):
     s = Search()
@@ -55,3 +77,25 @@ def test_multi_search(data_client):
 
     assert 52 == r2.hits.total
     assert r2.search is s2
+
+def test_multi_missing(data_client):
+    s1 = Repository.search()
+    s2 = Search(doc_type='commits')
+    s3 = Search(index='does_not_exist')
+
+    ms = MultiSearch()
+    ms = ms.add(s1).add(s2).add(s3)
+
+    with raises(TransportError):
+        ms.execute()
+
+    r1, r2, r3 = ms.execute(raise_on_error=False)
+
+    assert 1 == len(r1)
+    assert isinstance(r1[0], Repository)
+    assert r1.search is s1
+
+    assert 52 == r2.hits.total
+    assert r2.search is s2
+
+    assert r3 is None

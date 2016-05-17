@@ -1,5 +1,6 @@
 import re
 
+from elasticsearch.exceptions import NotFoundError, RequestError
 from six import iteritems, add_metaclass
 
 from .field import Field
@@ -44,7 +45,7 @@ class DocTypeOptions(object):
         self._using = getattr(meta, 'using', None)
 
         # get doc_type name, if not defined take the name of the class and
-        # tranform it to lower_case
+        # transform it to lower_case
         doc_type = getattr(meta, 'doc_type',
                 re.sub(r'(.)([A-Z])', r'\1_\2', name).lower())
 
@@ -148,6 +149,54 @@ class DocType(ObjectBase):
         if not doc['found']:
             return None
         return cls.from_es(doc)
+
+    @classmethod
+    def mget(cls, docs, using=None, index=None, raise_on_error=True,
+             missing='none', **kwargs):
+        if missing not in ('raise', 'skip', 'none'):
+            raise ValueError("'missing' must be 'raise', 'skip', or 'none'.")
+        es = connections.get_connection(using or cls._doc_type.using)
+        body = {'docs': [doc if isinstance(doc, dict) else {'_id': doc}
+                         for doc in docs]}
+        results = es.mget(
+            body,
+            index=index or cls._doc_type.index,
+            doc_type=cls._doc_type.name,
+            **kwargs
+        )
+
+        objs, error_docs, missing_docs = [], [], []
+        for doc in results['docs']:
+            if doc.get('found'):
+                if error_docs or missing_docs:
+                    # We're going to raise an exception anyway, so avoid an
+                    # expensive call to cls.from_es().
+                    continue
+
+                objs.append(cls.from_es(doc))
+
+            elif doc.get('error'):
+                if raise_on_error:
+                    error_docs.append(doc)
+                if missing == 'none':
+                    objs.append(None)
+
+            # The doc didn't cause an error, but the doc also wasn't found.
+            elif missing == 'raise':
+                missing_docs.append(doc)
+            elif missing == 'none':
+                objs.append(None)
+
+        if error_docs:
+            error_ids = [doc['_id'] for doc in error_docs]
+            message = 'Required routing/parent not provided for documents %s.'
+            message %= ', '.join(error_ids)
+            raise RequestError(400, message, error_docs)
+        if missing_docs:
+            missing_ids = [doc['_id'] for doc in missing_docs]
+            message = 'Documents %s not found.' % ', '.join(missing_ids)
+            raise NotFoundError(404, message, missing_docs)
+        return objs
 
     @classmethod
     def from_es(cls, hit):

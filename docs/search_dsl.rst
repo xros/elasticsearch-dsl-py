@@ -158,22 +158,7 @@ Query objects can be combined using logical operators:
     ~Q("match", title="python")
     # {"bool": {"must_not": [...]}}
 
-You can also use the ``+`` operator:
-
-.. code:: python
-
-    Q("match", title='python') + Q("match", title='django')
-    # {"bool": {"must": [...]}}
-
-When using the ``+`` operator with ``Bool`` queries, it will merge them into a
-single ``Bool`` query:
-
-.. code:: python
-
-    Q("bool") + Q("bool")
-    # {"bool": {"..."}} 
-
-When you call the ``.query()`` method multiple times, the ``+`` operator will
+When you call the ``.query()`` method multiple times, the ``&`` operator will
 be used internally:
 
 .. code:: python
@@ -267,7 +252,7 @@ acts as a top-level aggregation:
     #     }
     #   }
     # }
-    
+
 or
 
 .. code:: python
@@ -415,7 +400,7 @@ To set extra properties of the search request, use the ``.extra()`` method:
 .. code:: python
 
   s = s.extra(explain=True)
- 
+
 To set query parameters, use the ``.params()`` method:
 
 .. code:: python
@@ -462,7 +447,7 @@ convenient helpers:
 
   print(response.success())
   # True
-      
+
   print(response.took)
   # 12
 
@@ -517,7 +502,7 @@ Aggregations are available through the ``aggregations`` property:
 
     for tag in response.aggregations.per_tag.buckets:
         print(tag.key, tag.max_lines.value)
-    
+
 
 
 ``MultiSearch``
