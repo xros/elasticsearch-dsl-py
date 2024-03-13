@@ -21,7 +21,7 @@ declaring a ``FacetedSearch`` subclass:
   the name of the index (as string) to search through, defaults to ``'_all'``.
 
 ``doc_types``
-  list of ``DocType`` subclasses or strings to be used, defaults to
+  list of ``Document`` subclasses or strings to be used, defaults to
   ``['_all']``.
 
 ``fields``
@@ -34,6 +34,11 @@ declaring a ``FacetedSearch`` subclass:
   values should be instances of any ``Facet`` subclass, for example: ``{'tags':
   TermsFacet(field='tags')}``
 
+``sort``
+  tuple or list of fields on which the results should be sorted. The format of
+  the individual fields are to be the same as those passed to
+  :meth:`~elasticsearch_dsl.Search.sort`.
+
 
 Facets
 ~~~~~~
@@ -44,20 +49,33 @@ There are several different facets available:
   provides an option to split documents into groups based on a value of a field, for example ``TermsFacet(field='category')``
 
 ``DateHistogramFacet``
-  split documents into time intervals, example: ``DateHistogramFacet(field="published_date", interval="day")``
+  split documents into time intervals, example: ``DateHistogramFacet(field="published_date", calendar_interval="day")``
 
 ``HistogramFacet``
   similar to ``DateHistogramFacet`` but for numerical values: ``HistogramFacet(field="rating", interval=2)``
 
-``Rangefacet``
+``RangeFacet``
   allows you to define your own ranges for a numerical fields:
-  ``Rangefacet(field="comment_count", ranges=[("few", (None, 2)), ("lots", (2, None))])``
+  ``RangeFacet(field="comment_count", ranges=[("few", (None, 2)), ("lots", (2, None))])``
+
+``NestedFacet``
+  is just a simple facet that wraps another to provide access to nested documents:
+  ``NestedFacet('variants', TermsFacet(field='variants.color'))``
+
+
+By default facet results will only calculate document count, if you wish for
+a different metric you can pass in any single value metric aggregation as the
+``metric`` kwarg (``TermsFacet(field='tags', metric=A('max',
+field=timestamp))``). When specifying ``metric`` the results will be, by
+default, sorted in descending order by that metric. To change it to ascending
+specify ``metric_sort="asc"`` and to just sort by document count use
+``metric_sort=False``.
 
 Advanced
 ~~~~~~~~
 
 If you require any custom behavior or modifications simply override one or more
-of the methods responsible for the class' functions. The two main methods are:
+of the methods responsible for the class' functions:
 
 ``search(self)``
   is responsible for constructing the ``Search`` object used. Override this if
@@ -65,8 +83,12 @@ of the methods responsible for the class' functions. The two main methods are:
   filter for published articles only).
 
 ``query(self, search)``
-  adds the query postion of the search (if search input specified), by default
+  adds the query position of the search (if search input specified), by default
   using ``MultiField`` query. Override this if you want to modify the query type used.
+
+``highlight(self, search)``
+  defines the highlighting on the ``Search`` object and returns a new one.
+  Default behavior is to highlight on all fields specified for search.
 
 
 Usage
@@ -123,7 +145,8 @@ Example
     response = bs.execute()
 
     # access hits and other attributes as usual
-    print(response.hits.total, 'hits total')
+    total = response.hits.total
+    print('total hits', total.relation, total.value)
     for hit in response:
         print(hit.meta.score, hit.title)
 

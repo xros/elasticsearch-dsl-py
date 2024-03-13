@@ -1,3 +1,5 @@
+.. _search_dsl:
+
 Search DSL
 ==========
 
@@ -12,9 +14,17 @@ The ``Search`` object represents the entire search request:
 
   * aggregations
 
+  * k-nearest neighbor searches
+
   * sort
 
   * pagination
+
+  * highlighting
+
+  * suggestions
+
+  * collapsing
 
   * additional parameters
 
@@ -23,11 +33,12 @@ The ``Search`` object represents the entire search request:
 
 The API is designed to be chainable. With the exception of the
 aggregations functionality this means that the ``Search`` object is immutable -
-all changes to the object will result in a copy being created which contains
-the changes. This means you can safely pass the ``Search`` object to foreign
-code without fear of it modifying your objects.
+all changes to the object will result in a shallow copy being created which
+contains the changes. This means you can safely pass the ``Search`` object to
+foreign code without fear of it modifying your objects as long as it sticks to
+the ``Search`` object APIs.
 
-You can pass an instance of the low-level `elasticsearch client <http://elasticsearch-py.readthedocs.org/>`_ when
+You can pass an instance of the low-level `elasticsearch client <https://elasticsearch-py.readthedocs.io/>`_ when
 instantiating the ``Search`` object:
 
 .. code:: python
@@ -40,7 +51,7 @@ instantiating the ``Search`` object:
     s = Search(using=client)
 
 You can also define the client at a later time (for more options see the
-~:ref:`connections` chapter):
+:ref:`configuration` chapter):
 
 .. code:: python
 
@@ -84,6 +95,19 @@ explicitly:
 
     print(s.to_dict())
 
+
+Delete By Query
+~~~~~~~~~~~~~~~
+You can delete the documents matching a search by calling ``delete`` on the ``Search`` object instead of
+``execute`` like this:
+
+.. code:: python
+
+    s = Search(index='i').query("match", title="python")
+    response = s.delete()
+
+
+
 Queries
 ~~~~~~~
 
@@ -118,6 +142,8 @@ parameters or the raw ``dict``:
 
 .. code:: python
 
+    from elasticsearch_dsl import Q
+
     Q("multi_match", query='python django', fields=['title', 'body'])
     Q({"multi_match": {"query": "python django", "fields": ["title", "body"]}})
 
@@ -141,6 +167,28 @@ just override the query used in the ``Search`` object:
 
     s.query = Q('bool', must=[Q('match', title='python'), Q('match', body='best')])
 
+Dotted fields
+^^^^^^^^^^^^^
+
+Sometimes you want to refer to a field within another field, either as
+a multi-field (``title.keyword``) or in a structured ``json`` document like
+``address.city``. To make it easier, the ``Q`` shortcut (as well as the
+``query``, ``filter``, and ``exclude`` methods on ``Search`` class) allows you
+to use ``__`` (double underscore) in place of a dot in a keyword argument:
+
+.. code:: python
+
+    s = Search()
+    s = s.filter('term', category__keyword='Python')
+    s = s.query('match', address__city='prague')
+
+Alternatively you can always fall back to python's kwarg unpacking if you prefer:
+
+.. code:: python
+
+    s = Search()
+    s = s.filter('term', **{'category.keyword': 'Python'})
+    s = s.query('match', **{'address.city': 'prague'})
 
 Query combination
 ^^^^^^^^^^^^^^^^^
@@ -183,7 +231,6 @@ to directly construct the combined query:
 Filters
 ~~~~~~~
 
-
 If you want to add a query in a `filter context
 <https://www.elastic.co/guide/en/elasticsearch/reference/2.0/query-filter-context.html>`_
 you can use the ``filter()`` method to make things easier:
@@ -202,10 +249,17 @@ Behind the scenes this will produce a ``Bool`` query and place the specified
     s = s.query('bool', filter=[Q('terms', tags=['search', 'python'])])
 
 
-
 If you want to use the post_filter element for faceted navigation, use the
 ``.post_filter()`` method.
 
+You can also ``exclude()`` items from your query like this:
+
+.. code:: python
+
+    s = Search()
+    s = s.exclude('terms', tags=['search', 'python'])
+
+which is shorthand for: ``s = s.query('bool', filter=[~Q('terms', tags=['search', 'python'])])``
 
 Aggregations
 ~~~~~~~~~~~~
@@ -213,6 +267,8 @@ Aggregations
 To define an aggregation, you can use the ``A`` shortcut:
 
 .. code:: python
+
+    from elasticsearch_dsl import A
 
     A('terms', field='tags')
     # {"terms": {"field": "tags"}}
@@ -298,6 +354,31 @@ As opposed to other methods on the ``Search`` objects, defining aggregations is
 done in-place (does not return a copy).
 
 
+K-Nearest Neighbor Searches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To issue a kNN search, use the ``.knn()`` method:
+
+.. code:: python
+
+   s = Search()
+   vector = get_embedding("search text")
+
+   s = s.knn(
+       field="embedding",
+       k=5,
+       num_candidates=10,
+       query_vector=vector
+   )
+
+The ``field``, ``k`` and ``num_candidates`` arguments can be given as
+positional or keyword arguments and are required. In addition to these,
+``query_vector`` or ``query_vector_builder`` must be given as well.
+
+The ``.knn()`` method can be invoked multiple times to include multiple kNN
+searches in the request.
+
+
 Sorting
 ~~~~~~~
 
@@ -359,7 +440,7 @@ Enabling highlighting for individual fields is done using the ``highlight`` meth
     # or, including parameters:
     s = s.highlight('title', fragment_size=50)
 
-The fragments in the response will then be available on reach ``Result`` object
+The fragments in the response will then be available on each ``Result`` object
 as ``.meta.highlight.FIELD`` which will contain the list of fragments:
 
 .. code:: python
@@ -376,26 +457,67 @@ To specify a suggest request on your ``Search`` object use the ``suggest`` metho
 
 .. code:: python
 
+    # check for correct spelling
     s = s.suggest('my_suggestion', 'pyhton', term={'field': 'title'})
 
 The first argument is the name of the suggestions (name under which it will be
 returned), second is the actual text you wish the suggester to work on and the
-keyword arguments will be added to the suggest's json as-is.
+keyword arguments will be added to the suggest's json as-is which means that it
+should be one of ``term``, ``phrase`` or ``completion`` to indicate which type
+of suggester should be used.
 
-If you only wish to run the suggestion part of the search (via the ``_suggest``
-endpoint) you can do so via ``execute_suggest``:
+Collapsing
+~~~~~~~~~~
+
+To collapse search results use the ``collapse`` method on your ``Search`` object:
 
 .. code:: python
 
-    s = s.suggest('my_suggestion', 'pyhton', term={'field': 'title'})
-    suggestions = s.execute_suggest()
+    s = Search().query("match", message="GET /search")
+    # collapse results by user_id
+    s = s.collapse("user_id")
 
-    print(suggestions.my_suggestion)
+The top hits will only include one result per ``user_id``. You can also expand
+each collapsed top hit with the ``inner_hits`` parameter,
+``max_concurrent_group_searches`` being the number of concurrent requests
+allowed to retrieve the inner hits per group:
+
+.. code:: python
+
+    inner_hits = {"name": "recent_search", "size": 5, "sort": [{"@timestamp": "desc"}]}
+    s = s.collapse("user_id", inner_hits=inner_hits, max_concurrent_group_searches=4)
+
+More Like This Query
+~~~~~~~~~~~~~~~~~~~~
+
+To use Elasticsearch's more_like_this functionality, you can use the MoreLikeThis query type.
+
+A simple example is below
+
+.. code:: python
+
+    from elasticsearch_dsl.query import MoreLikeThis
+    from elasticsearch_dsl import Search
+
+    my_text = 'I want to find something similar'
+
+    s = Search()
+    # We're going to match based only on two fields, in this case text and title
+    s = s.query(MoreLikeThis(like=my_text, fields=['text', 'title']))
+    # You can also exclude fields from the result to make the response quicker in the normal way
+    s = s.source(exclude=["text"])
+    response = s.execute()
+    
+    for hit in response:
+        print(hit.title)
+    
 
 Extra properties and parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To set extra properties of the search request, use the ``.extra()`` method:
+To set extra properties of the search request, use the ``.extra()`` method.
+This can be used to define keys in the body that cannot be defined via a
+specific API method like ``explain`` or ``search_after``:
 
 .. code:: python
 
@@ -405,20 +527,22 @@ To set query parameters, use the ``.params()`` method:
 
 .. code:: python
 
-  s = s.params(search_type="count")
+  s = s.params(routing="42")
 
 
 If you need to limit the fields being returned by elasticsearch, use the
-``fields()`` method:
+``source()`` method:
 
 .. code:: python
 
   # only return the selected fields
-  s = s.fields(['title', 'body'])
-  # reset the field selection
-  s = s.fields()
+  s = s.source(['title', 'body'])
   # don't return any fields, just the metadata
-  s = s.fields([])
+  s = s.source(False)
+  # explicitly include/exclude fields
+  s = s.source(includes=["title"], excludes=["user.*"])
+  # reset the field selection
+  s = s.source(None)
 
 Serialization and Deserialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -426,12 +550,22 @@ Serialization and Deserialization
 The search object can be serialized into a dictionary by using the
 ``.to_dict()`` method.
 
-You can also create a ``Search`` object from a ``dict``:
+You can also create a ``Search`` object from a ``dict`` using the ``from_dict``
+class method. This will create a new ``Search`` object and populate it using
+the data from the dict:
 
 .. code:: python
 
   s = Search.from_dict({"query": {"match": {"title": "python"}}})
 
+If you wish to modify an existing ``Search`` object, overriding it's
+properties, instead use the ``update_from_dict`` method that alters an instance
+**in-place**:
+
+.. code:: python
+
+  s = Search(index='i')
+  s.update_from_dict({"query": {"match": {"title": "python"}}, "size": 42})
 
 Response
 --------
@@ -451,7 +585,10 @@ convenient helpers:
   print(response.took)
   # 12
 
-  print(response.hits.total)
+  print(response.hits.total.relation)
+  # eq
+  print(response.hits.total.value)
+  # 142
 
   print(response.suggest.my_suggestions)
 
@@ -472,6 +609,9 @@ just iterate over the ``Response`` object:
     for h in response:
         print(h.title, h.body)
 
+.. note::
+
+  If you are only seeing partial results (e.g. 10000 or even 10 results), consider using the option ``s.extra(track_total_hits=True)`` to get a full hit count.
 
 Result
 ~~~~~~

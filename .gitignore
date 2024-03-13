@@ -11,3 +11,9 @@ junit.xml
 test_elasticsearch_dsl/htmlcov
 docs/_build
 .cache
+venv
+.idea
+.pytest_cache
+
+# sample code for GitHub issues
+issues

@@ -3,7 +3,7 @@ Elasticsearch DSL
 
 Elasticsearch DSL is a high-level library whose aim is to help with writing and
 running queries against Elasticsearch. It is built on top of the official
-low-level client (``elasticsearch-py``).
+low-level client (`elasticsearch-py <https://github.com/elastic/elasticsearch-py>`_).
 
 It provides a more convenient and idiomatic way to write and manipulate
 queries. It stays close to the Elasticsearch JSON DSL, mirroring its
@@ -17,30 +17,61 @@ document data in user-defined classes.
 To use the other Elasticsearch APIs (eg. cluster health) just use the
 underlying client.
 
+Installation
+------------
+
+::
+
+  pip install elasticsearch-dsl
+
+Examples
+--------
+
+Please see the `examples
+<https://github.com/elastic/elasticsearch-dsl-py/tree/master/examples>`_
+directory to see some complex examples using ``elasticsearch-dsl``.
+
 Compatibility
 -------------
 
-The library is compatible with all Elasticsearch versions since ``1.x`` but you
+The library is compatible with all Elasticsearch versions since ``2.x`` but you
 **have to use a matching major version**:
+
+For **Elasticsearch 8.0** and later, use the major version 8 (``8.x.y``) of the
+library.
+
+For **Elasticsearch 7.0** and later, use the major version 7 (``7.x.y``) of the
+library.
+
+For **Elasticsearch 6.0** and later, use the major version 6 (``6.x.y``) of the
+library.
+
+For **Elasticsearch 5.0** and later, use the major version 5 (``5.x.y``) of the
+library.
 
 For **Elasticsearch 2.0** and later, use the major version 2 (``2.x.y``) of the
 library.
 
-For **Elasticsearch 1.0** and later, use the major version 0 (``0.x.y``) of the
-library.
-
-
 The recommended way to set your requirements in your `setup.py` or
 `requirements.txt` is::
+
+    # Elasticsearch 8.x
+    elasticsearch-dsl>=8.0.0,<9.0.0
+
+    # Elasticsearch 7.x
+    elasticsearch-dsl>=7.0.0,<8.0.0
+
+    # Elasticsearch 6.x
+    elasticsearch-dsl>=6.0.0,<7.0.0
+
+    # Elasticsearch 5.x
+    elasticsearch-dsl>=5.0.0,<6.0.0
 
     # Elasticsearch 2.x
     elasticsearch-dsl>=2.0.0,<3.0.0
 
-    # Elasticsearch 1.x
-    elasticsearch-dsl<2.0.0
 
-
-The development is happening on ``master`` and ``1.x`` branches, respectively.
+The development is happening on ``main``, older branches only get bugfix releases
 
 Search Example
 --------------
@@ -50,20 +81,16 @@ Let's have a typical search request written directly as a ``dict``:
 .. code:: python
 
     from elasticsearch import Elasticsearch
-    client = Elasticsearch()
+    client = Elasticsearch("https://localhost:9200")
 
     response = client.search(
         index="my-index",
         body={
           "query": {
-            "filtered": {
-              "query": {
-                "bool": {
-                  "must": [{"match": {"title": "python"}}],
-                  "must_not": [{"match": {"description": "beta"}}]
-                }
-              },
-              "filter": {"term": {"category": "search"}}
+            "bool": {
+              "must": [{"match": {"title": "python"}}],
+              "must_not": [{"match": {"description": "beta"}}],
+              "filter": [{"term": {"category": "search"}}]
             }
           },
           "aggs" : {
@@ -94,14 +121,14 @@ Let's rewrite the example using the Python DSL:
 .. code:: python
 
     from elasticsearch import Elasticsearch
-    from elasticsearch_dsl import Search, Q
+    from elasticsearch_dsl import Search
 
-    client = Elasticsearch()
+    client = Elasticsearch("https://localhost:9200")
 
     s = Search(using=client, index="my-index") \
         .filter("term", category="search") \
         .query("match", title="python")   \
-        .query(~Q("match", description="beta"))
+        .exclude("match", description="beta")
 
     s.aggs.bucket('per_tag', 'terms', field='tags') \
         .metric('max_lines', 'max', field='lines')
@@ -116,15 +143,11 @@ Let's rewrite the example using the Python DSL:
 
 As you see, the library took care of:
 
-  * creating appropriate ``Query`` objects by name (eq. "match")
-
-  * composing queries into a compound ``bool`` query
-
-  * creating a ``filtered`` query since ``.filter()`` was used
-
-  * providing a convenient access to response data
-
-  * no curly or square brackets everywhere
+- creating appropriate ``Query`` objects by name (eq. "match")
+- composing queries into a compound ``bool`` query
+- putting the ``term`` query in a filter context of the ``bool`` query
+- providing a convenient access to response data
+- no curly or square brackets everywhere
 
 
 Persistence Example
@@ -135,28 +158,30 @@ Let's have a simple Python class representing an article in a blogging system:
 .. code:: python
 
     from datetime import datetime
-    from elasticsearch_dsl import DocType, String, Date, Integer
-    from elasticsearch_dsl.connections import connections
+    from elasticsearch_dsl import Document, Date, Integer, Keyword, Text, connections
 
     # Define a default Elasticsearch client
-    connections.create_connection(hosts=['localhost'])
+    connections.create_connection(hosts="https://localhost:9200")
 
-    class Article(DocType):
-        title = String(analyzer='snowball', fields={'raw': String(index='not_analyzed')})
-        body = String(analyzer='snowball')
-        tags = String(index='not_analyzed')
+    class Article(Document):
+        title = Text(analyzer='snowball', fields={'raw': Keyword()})
+        body = Text(analyzer='snowball')
+        tags = Keyword()
         published_from = Date()
         lines = Integer()
 
-        class Meta:
-            index = 'blog'
+        class Index:
+            name = 'blog'
+            settings = {
+              "number_of_shards": 2,
+            }
 
         def save(self, ** kwargs):
             self.lines = len(self.body.split())
             return super(Article, self).save(** kwargs)
 
         def is_published(self):
-            return datetime.now() < self.published_from
+            return datetime.now() > self.published_from
 
     # create the mappings in elasticsearch
     Article.init()
@@ -176,20 +201,14 @@ Let's have a simple Python class representing an article in a blogging system:
 
 In this example you can see:
 
-  * providing a :ref:`default connection`
-
-  * defining fields with mapping configuration
-
-  * setting index name
-
-  * defining custom methods
-
-  * overriding the built-in ``.save()`` method to hook into the persistence
-    life cycle
-
-  * retrieving and saving the object into Elasticsearch
-
-  * accessing the underlying client for other APIs
+- providing a default connection
+- defining fields with mapping configuration
+- setting index name
+- defining custom methods
+- overriding the built-in ``.save()`` method to hook into the persistence
+  life cycle
+- retrieving and saving the object into Elasticsearch
+- accessing the underlying client for other APIs
 
 You can see more in the :ref:`persistence` chapter.
 
@@ -197,7 +216,7 @@ You can see more in the :ref:`persistence` chapter.
 Pre-built Faceted Search
 ------------------------
 
-If you have your ``DocType``\ s defined you can very easily create a faceted
+If you have your ``Document``\ s defined you can very easily create a faceted
 search class to simplify searching and filtering.
 
 .. note::
@@ -206,8 +225,7 @@ search class to simplify searching and filtering.
 
 .. code:: python
 
-    from elasticsearch_dsl import FacetedSearch
-    from elasticsearch_dsl.aggs import Terms, DateHistogram
+    from elasticsearch_dsl import FacetedSearch, TermsFacet, DateHistogramFacet
 
     class BlogSearch(FacetedSearch):
         doc_types = [Article, ]
@@ -216,8 +234,8 @@ search class to simplify searching and filtering.
 
         facets = {
             # use bucket aggregations to define facets
-            'tags': Terms(field='tags'),
-            'publishing_frequency': DateHistogram(field='published_from', interval='month')
+            'tags': TermsFacet(field='tags'),
+            'publishing_frequency': DateHistogramFacet(field='published_from', interval='month')
         }
 
     # empty search
@@ -234,6 +252,54 @@ search class to simplify searching and filtering.
         print(month.strftime('%B %Y'), ' (SELECTED):' if selected else ':', count)
 
 You can find more details in the :ref:`faceted_search` chapter.
+
+
+Update By Query Example
+------------------------
+
+Let's resume the simple example of articles on a blog, and let's assume that each article has a number of likes.
+For this example, imagine we want to increment the number of likes by 1 for all articles that match a certain tag and do not match a certain description.
+Writing this as a ``dict``, we would have the following code:
+
+.. code:: python
+
+    from elasticsearch import Elasticsearch
+    client = Elasticsearch()
+
+    response = client.update_by_query(
+        index="my-index",
+        body={
+          "query": {
+            "bool": {
+              "must": [{"match": {"tag": "python"}}],
+              "must_not": [{"match": {"description": "beta"}}]
+            }
+          },
+          "script"={
+            "source": "ctx._source.likes++",
+            "lang": "painless"
+          }
+        },
+      )
+
+Using the DSL, we can now express this query as such:
+
+.. code:: python
+
+    from elasticsearch import Elasticsearch
+    from elasticsearch_dsl import Search, UpdateByQuery
+
+    client = Elasticsearch()
+    ubq = UpdateByQuery(using=client, index="my-index") \
+          .query("match", title="python")   \
+          .exclude("match", description="beta") \
+          .script(source="ctx._source.likes++", lang="painless")
+
+    response = ubq.execute()
+
+As you can see, the ``Update By Query`` object provides many of the savings offered
+by the ``Search`` object, and additionally allows one to update the results of the search
+based on a script assigned in the same manner.
 
 Migration from ``elasticsearch-py``
 -----------------------------------
@@ -284,5 +350,7 @@ Contents
    search_dsl
    persistence
    faceted_search
+   update_by_query
+   api
+   CONTRIBUTING
    Changelog
-
