@@ -4,40 +4,33 @@ API Documentation
 =================
 
 Below please find the documentation for the public classes and functions of ``elasticsearch_dsl``.
+The :ref:`Asynchronous API <async_api>` classes are documented separately.
 
 .. py:module:: elasticsearch_dsl
 
-Search
-------
-
 .. autoclass:: Search
+   :inherited-members:
    :members:
 
 .. autoclass:: MultiSearch
+   :inherited-members:
    :members:
-
-Document
---------
 
 .. autoclass:: Document
+   :inherited-members:
    :members:
-
-Index
------
 
 .. autoclass:: Index
+   :inherited-members:
    :members:
-
-Faceted Search
---------------
 
 .. autoclass:: FacetedSearch
+   :inherited-members:
    :members:
 
-Update By Query 
-----------------
 .. autoclass:: UpdateByQuery
-  :members:
+   :inherited-members:
+   :members:
 
 Mappings
 --------
@@ -108,5 +101,3 @@ Common field options:
 
 ``required``
   Indicates if a field requires a value for the document to be valid.
-
-

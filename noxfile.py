@@ -15,6 +15,8 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
+import subprocess
+
 import nox
 
 SOURCE_FILES = (
@@ -27,10 +29,15 @@ SOURCE_FILES = (
     "utils/",
 )
 
+TYPED_FILES = (
+    "elasticsearch_dsl/function.py",
+    "elasticsearch_dsl/query.py",
+    "tests/test_query.py",
+)
+
 
 @nox.session(
     python=[
-        "3.7",
         "3.8",
         "3.9",
         "3.10",
@@ -48,6 +55,9 @@ def test(session):
             "-vvv",
             "--cov=elasticsearch_dsl",
             "--cov=tests.test_integration.test_examples",
+            "--cov-report=term-missing",
+            "--cov-branch",
+            "--cov-report=html",
             "tests/",
         )
     session.run("pytest", *argv)
@@ -55,8 +65,9 @@ def test(session):
 
 @nox.session(python="3.12")
 def format(session):
-    session.install("black~=24.0", "isort")
-    session.run("black", "--target-version=py37", *SOURCE_FILES)
+    session.install("black~=24.0", "isort", "unasync", "setuptools")
+    session.run("python", "utils/run-unasync.py")
+    session.run("black", "--target-version=py38", *SOURCE_FILES)
     session.run("isort", *SOURCE_FILES)
     session.run("python", "utils/license-headers.py", "fix", *SOURCE_FILES)
 
@@ -65,11 +76,37 @@ def format(session):
 
 @nox.session(python="3.12")
 def lint(session):
-    session.install("flake8", "black~=24.0", "isort")
-    session.run("black", "--check", "--target-version=py37", *SOURCE_FILES)
+    session.install("flake8", "black~=24.0", "isort", "unasync", "setuptools")
+    session.run("black", "--check", "--target-version=py38", *SOURCE_FILES)
     session.run("isort", "--check", *SOURCE_FILES)
-    session.run("flake8", "--ignore=E501,E741,W503", *SOURCE_FILES)
+    session.run("python", "utils/run-unasync.py", "--check")
+    session.run("flake8", "--ignore=E501,E741,W503,E704", *SOURCE_FILES)
     session.run("python", "utils/license-headers.py", "check", *SOURCE_FILES)
+
+
+@nox.session(python="3.8")
+def type_check(session):
+    session.install("mypy", ".[develop]")
+    errors = []
+    popen = subprocess.Popen(
+        "mypy --strict elasticsearch_dsl tests",
+        env=session.env,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+
+    mypy_output = ""
+    while popen.poll() is None:
+        mypy_output += popen.stdout.read(8192).decode()
+    mypy_output += popen.stdout.read().decode()
+
+    for line in mypy_output.split("\n"):
+        filepath = line.partition(":")[0]
+        if filepath in TYPED_FILES:
+            errors.append(line)
+    if errors:
+        session.error("\n" + "\n".join(sorted(set(errors))))
 
 
 @nox.session()

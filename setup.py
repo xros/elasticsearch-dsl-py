@@ -19,7 +19,7 @@ from os.path import dirname, join
 
 from setuptools import find_packages, setup
 
-VERSION = (8, 12, 0)
+VERSION = (8, 13, 1)
 __version__ = VERSION
 __versionstr__ = ".".join(map(str, VERSION))
 
@@ -32,12 +32,23 @@ install_requires = [
     "elasticsearch>=8.0.0,<9.0.0",
 ]
 
+async_requires = [
+    "elasticsearch[async]>=8.0.0,<9.0.0",
+]
+
 develop_requires = [
+    "elasticsearch[async]",
+    "unasync",
     "pytest",
     "pytest-cov",
     "pytest-mock",
+    "pytest-asyncio",
     "pytz",
     "coverage",
+    # the following three are used by the vectors example and its tests
+    "nltk",
+    "sentence_transformers",
+    "tqdm",
     # Override Read the Docs default (sphinx<2 and sphinx-rtd-theme<0.5)
     "sphinx>2",
     "sphinx-rtd-theme>0.5",
@@ -54,7 +65,7 @@ setup(
     author="Elastic Client Library Maintainers",
     author_email="client-libs@elastic.co",
     packages=find_packages(where=".", exclude=("tests*",)),
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     classifiers=[
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
@@ -63,7 +74,6 @@ setup(
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3 :: Only",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
@@ -73,5 +83,5 @@ setup(
         "Programming Language :: Python :: Implementation :: PyPy",
     ],
     install_requires=install_requires,
-    extras_require={"develop": develop_requires},
+    extras_require={"async": async_requires, "develop": develop_requires},
 )

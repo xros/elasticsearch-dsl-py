@@ -18,8 +18,13 @@
 
 import collections.abc
 from copy import copy
+from typing import Any, ClassVar, Dict, List, Optional, Type, Union
+
+from typing_extensions import Self
 
 from .exceptions import UnknownDslObject, ValidationException
+
+JSONType = Union[int, bool, str, float, List["JSONType"], Dict[str, "JSONType"]]
 
 SKIP_VALUES = ("", None)
 EXPAND__TO_DOT = True
@@ -100,6 +105,9 @@ class AttrList:
 
     def __setstate__(self, state):
         self._l_, self._obj_wrapper = state
+
+    def to_list(self):
+        return self._l_
 
 
 class AttrDict:
@@ -184,6 +192,12 @@ class AttrDict:
     def to_dict(self):
         return self._d_
 
+    def keys(self):
+        return self._d_.keys()
+
+    def items(self):
+        return self._d_.items()
+
 
 class DslMeta(type):
     """
@@ -198,7 +212,7 @@ class DslMeta(type):
     For typical use see `QueryMeta` and `Query` in `elasticsearch_dsl.query`.
     """
 
-    _types = {}
+    _types: ClassVar[Dict[str, Type["DslBase"]]] = {}
 
     def __init__(cls, name, bases, attrs):
         super().__init__(name, bases, attrs)
@@ -239,10 +253,13 @@ class DslBase(metaclass=DslMeta):
           all values in the `must` attribute into Query objects)
     """
 
-    _param_defs = {}
+    _type_name: ClassVar[str]
+    _param_defs: ClassVar[Dict[str, Dict[str, Union[str, bool]]]] = {}
 
     @classmethod
-    def get_dsl_class(cls, name, default=None):
+    def get_dsl_class(
+        cls: Type[Self], name: str, default: Optional[str] = None
+    ) -> Type[Self]:
         try:
             return cls._classes[name]
         except KeyError:
@@ -252,7 +269,9 @@ class DslBase(metaclass=DslMeta):
                 f"DSL class `{name}` does not exist in {cls._type_name}."
             )
 
-    def __init__(self, _expand__to_dot=EXPAND__TO_DOT, **params):
+    def __init__(self, _expand__to_dot: Optional[bool] = None, **params: Any) -> None:
+        if _expand__to_dot is None:
+            _expand__to_dot = EXPAND__TO_DOT
         self._params = {}
         for pname, pvalue in params.items():
             if "__" in pname and _expand__to_dot:
@@ -340,7 +359,7 @@ class DslBase(metaclass=DslMeta):
             return AttrDict(value)
         return value
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, JSONType]:
         """
         Serialize the DSL object to plain dict
         """
@@ -379,7 +398,7 @@ class DslBase(metaclass=DslMeta):
             d[pname] = value
         return {self.name: d}
 
-    def _clone(self):
+    def _clone(self) -> Self:
         c = self.__class__()
         for attr in self._params:
             c._params[attr] = copy(self._params[attr])

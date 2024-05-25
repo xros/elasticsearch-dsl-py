@@ -197,6 +197,10 @@ class AutoDateHistogram(DateHistogram):
     name = "auto_date_histogram"
 
 
+class AdjacencyMatrix(Bucket):
+    name = "adjacency_matrix"
+
+
 class DateRange(Bucket):
     name = "date_range"
 
@@ -207,6 +211,10 @@ class GeoDistance(Bucket):
 
 class GeohashGrid(Bucket):
     name = "geohash_grid"
+
+
+class GeohexGrid(Bucket):
+    name = "geohex_grid"
 
 
 class GeotileGrid(Bucket):
@@ -230,6 +238,10 @@ class Histogram(Bucket):
 
 class IPRange(Bucket):
     name = "ip_range"
+
+
+class IPPrefix(Bucket):
+    name = "ip_prefix"
 
 
 class Missing(Bucket):
@@ -278,6 +290,10 @@ class DiversifiedSampler(Bucket):
     name = "diversified_sampler"
 
 
+class RandomSampler(Bucket):
+    name = "random_sampler"
+
+
 class Composite(Bucket):
     name = "composite"
     _param_defs = {
@@ -295,6 +311,10 @@ class VariableWidthHistogram(Bucket):
 
 class MultiTerms(Bucket):
     name = "multi_terms"
+
+
+class CategorizeText(Bucket):
+    name = "categorize_text"
 
 
 # metric aggregations
@@ -329,8 +349,16 @@ class GeoBounds(Agg):
     name = "geo_bounds"
 
 
+class GeoLine(Agg):
+    name = "geo_line"
+
+
 class Max(Agg):
     name = "max"
+
+
+class MatrixStats(Agg):
+    name = "matrix_stats"
 
 
 class MedianAbsoluteDeviation(Agg):
@@ -359,6 +387,10 @@ class Stats(Agg):
 
 class Sum(Agg):
     name = "sum"
+
+
+class TopMetrics(Agg):
+    name = "top_metrics"
 
 
 class TTest(Agg):

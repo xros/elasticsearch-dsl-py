@@ -26,6 +26,7 @@ To make the suggestions work in different languages we added a custom analyzer
 that does ascii folding.
 """
 
+import os
 from itertools import permutations
 
 from elasticsearch_dsl import (
@@ -52,13 +53,13 @@ class Person(Document):
     name = Text(fields={"keyword": Keyword()})
     popularity = Long()
 
-    # copletion field with a custom analyzer
+    # completion field with a custom analyzer
     suggest = Completion(analyzer=ascii_fold)
 
     def clean(self):
         """
         Automatically construct the suggestion input and weight by taking all
-        possible permutation of Person's name as ``input`` and taking their
+        possible permutations of Person's name as ``input`` and taking their
         popularity as ``weight``.
         """
         self.suggest = {
@@ -71,9 +72,9 @@ class Person(Document):
         settings = {"number_of_shards": 1, "number_of_replicas": 0}
 
 
-if __name__ == "__main__":
+def main():
     # initiate the default connection to elasticsearch
-    connections.create_connection()
+    connections.create_connection(hosts=[os.environ["ELASTICSEARCH_URL"]])
 
     # create the empty index
     Person.init()
@@ -96,3 +97,10 @@ if __name__ == "__main__":
         # print out all the options we got
         for option in response.suggest.auto_complete[0].options:
             print("%10s: %25s (%d)" % (text, option._source.name, option._score))
+
+    # close the connection
+    connections.get_connection().close()
+
+
+if __name__ == "__main__":
+    main()

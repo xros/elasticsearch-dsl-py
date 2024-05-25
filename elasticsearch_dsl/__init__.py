@@ -18,7 +18,8 @@
 from . import connections
 from .aggs import A
 from .analysis import analyzer, char_filter, normalizer, token_filter, tokenizer
-from .document import Document, InnerDoc, MetaField
+from .document import AsyncDocument, Document
+from .document_base import InnerDoc, MetaField
 from .exceptions import (
     ElasticsearchDslException,
     IllegalOperation,
@@ -26,6 +27,7 @@ from .exceptions import (
     ValidationException,
 )
 from .faceted_search import (
+    AsyncFacetedSearch,
     DateHistogramFacet,
     Facet,
     FacetedResponse,
@@ -76,19 +78,35 @@ from .field import (
     construct_field,
 )
 from .function import SF
-from .index import Index, IndexTemplate
-from .mapping import Mapping
+from .index import AsyncIndex, AsyncIndexTemplate, Index, IndexTemplate
+from .mapping import AsyncMapping, Mapping
 from .query import Q
-from .search import MultiSearch, Search
-from .update_by_query import UpdateByQuery
+from .search import (
+    AsyncEmptySearch,
+    AsyncMultiSearch,
+    AsyncSearch,
+    EmptySearch,
+    MultiSearch,
+    Search,
+)
+from .update_by_query import AsyncUpdateByQuery, UpdateByQuery
 from .utils import AttrDict, AttrList, DslBase
 from .wrappers import Range
 
-VERSION = (8, 12, 0)
+VERSION = (8, 13, 1)
 __version__ = VERSION
 __versionstr__ = ".".join(map(str, VERSION))
 __all__ = [
     "A",
+    "AsyncDocument",
+    "AsyncEmptySearch",
+    "AsyncFacetedSearch",
+    "AsyncIndex",
+    "AsyncIndexTemplate",
+    "AsyncMapping",
+    "AsyncMultiSearch",
+    "AsyncSearch",
+    "AsyncUpdateByQuery",
     "AttrDict",
     "AttrList",
     "Binary",
@@ -105,6 +123,7 @@ __all__ = [
     "DoubleRange",
     "DslBase",
     "ElasticsearchDslException",
+    "EmptySearch",
     "Facet",
     "FacetedResponse",
     "FacetedSearch",
