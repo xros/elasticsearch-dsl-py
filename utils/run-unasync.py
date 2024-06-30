@@ -60,6 +60,7 @@ def main(check=False):
         "AsyncUpdateByQuery": "UpdateByQuery",
         "AsyncMapping": "Mapping",
         "AsyncFacetedSearch": "FacetedSearch",
+        "AsyncUsingType": "UsingType",
         "async_connections": "connections",
         "async_scan": "scan",
         "async_simulate": "simulate",
@@ -72,6 +73,7 @@ def main(check=False):
         "async_sleep": "sleep",
         "assert_awaited_once_with": "assert_called_once_with",
         "pytest_asyncio": "pytest",
+        "asynccontextmanager": "contextmanager",
     }
     rules = [
         unasync.Rule(

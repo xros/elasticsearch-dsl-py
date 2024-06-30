@@ -15,27 +15,33 @@
 #  specific language governing permissions and limitations
 #  under the License.
 
+import contextlib
+from typing import AsyncIterator, Generic
+
 from elasticsearch.exceptions import ApiError
 from elasticsearch.helpers import async_scan
+from typing_extensions import TypeVar
 
 from ..async_connections import get_connection
-from ..response import Response
+from ..response import Hit, Response
 from ..search_base import MultiSearchBase, SearchBase
 from ..utils import AttrDict
 
+_R = TypeVar("_R", default=Hit)
 
-class AsyncSearch(SearchBase):
-    def __aiter__(self):
+
+class AsyncSearch(SearchBase[_R]):
+    def __aiter__(self) -> AsyncIterator[_R]:
         """
         Iterate over the hits.
         """
 
-        class ResultsIterator:
-            def __init__(self, search):
+        class ResultsIterator(Generic[_R]):
+            def __init__(self, search: AsyncSearch[_R]):
                 self.search = search
                 self.iterator = None
 
-            async def __anext__(self):
+            async def __anext__(self) -> _R:
                 if self.iterator is None:
                     self.iterator = iter(await self.search.execute())
                 try:
@@ -62,7 +68,7 @@ class AsyncSearch(SearchBase):
         )
         return resp["count"]
 
-    async def execute(self, ignore_cache=False):
+    async def execute(self, ignore_cache: bool = False) -> Response[_R]:
         """
         Execute the search and return an instance of ``Response`` wrapping all
         the data.
@@ -92,6 +98,8 @@ class AsyncSearch(SearchBase):
         pass to the underlying ``scan`` helper from ``elasticsearch-py`` -
         https://elasticsearch-py.readthedocs.io/en/master/helpers.html#elasticsearch.helpers.scan
 
+        The ``iterate()`` method should be preferred, as it provides similar
+        functionality using an Elasticsearch point in time.
         """
         es = get_connection(self._using)
 
@@ -112,6 +120,45 @@ class AsyncSearch(SearchBase):
                 index=self._index, body=self.to_dict(), **self._params
             )
         )
+
+    @contextlib.asynccontextmanager
+    async def point_in_time(self, keep_alive="1m"):
+        """
+        Open a point in time (pit) that can be used across several searches.
+
+        This method implements a context manager that returns a search object
+        configured to operate within the created pit.
+
+        :arg keep_alive: the time to live for the point in time, renewed with each search request
+        """
+        es = get_connection(self._using)
+
+        pit = await es.open_point_in_time(
+            index=self._index or "*", keep_alive=keep_alive
+        )
+        search = self.index().extra(pit={"id": pit["id"], "keep_alive": keep_alive})
+        if not search._sort:
+            search = search.sort("_shard_doc")
+        yield search
+        await es.close_point_in_time(id=pit["id"])
+
+    async def iterate(self, keep_alive="1m"):
+        """
+        Return a generator that iterates over all the documents matching the query.
+
+        This method uses a point in time to provide consistent results even when
+        the index is changing. It should be preferred over ``scan()``.
+
+        :arg keep_alive: the time to live for the point in time, renewed with each new search request
+        """
+        async with self.point_in_time(keep_alive=keep_alive) as s:
+            while True:
+                r = await s.execute()
+                for hit in r:
+                    yield hit
+                if len(r.hits) == 0:
+                    break
+                s = r.search_after()
 
 
 class AsyncMultiSearch(MultiSearchBase):

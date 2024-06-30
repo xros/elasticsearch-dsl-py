@@ -16,15 +16,31 @@
 #  under the License.
 
 """
-# Vector database example
+# Sparse vector database example
 
 Requirements:
 
-$ pip install nltk sentence_transformers tqdm elasticsearch-dsl[async]
+$ pip install nltk tqdm elasticsearch-dsl
+
+Before running this example, the ELSER v2 model must be downloaded and deployed
+to the Elasticsearch cluster, and an ingest pipeline must be defined. This can
+be done manually from Kibana, or with the following three curl commands from a
+terminal, adjusting the endpoint as needed:
+
+curl -X PUT \
+  "http://localhost:9200/_ml/trained_models/.elser_model_2?wait_for_completion" \
+  -H "Content-Type: application/json" \
+  -d '{"input":{"field_names":["text_field"]}}'
+curl -X POST \
+  "http://localhost:9200/_ml/trained_models/.elser_model_2/deployment/_start?wait_for=fully_allocated"
+curl -X PUT \
+  "http://localhost:9200/_ingest/pipeline/elser_ingest_pipeline" \
+  -H "Content-Type: application/json" \
+  -d '{"processors":[{"foreach":{"field":"passages","processor":{"inference":{"model_id":".elser_model_2","input_output":[{"input_field":"_ingest._value.content","output_field":"_ingest._value.embedding"}]}}}}]}'
 
 To run the example:
 
-$ python vectors.py "text to search"
+$ python sparse_vectors.py "text to search"
 
 The index will be created automatically if it does not exist. Add
 `--recreate-index` to regenerate it.
@@ -32,88 +48,78 @@ The index will be created automatically if it does not exist. Add
 The example dataset includes a selection of workplace documents. The
 following are good example queries to try out with this dataset:
 
-$ python vectors.py "work from home"
-$ python vectors.py "vacation time"
-$ python vectors.py "can I bring a bird to work?"
+$ python sparse_vectors.py "work from home"
+$ python sparse_vectors.py "vacation time"
+$ python sparse_vectors.py "can I bring a bird to work?"
 
 When the index is created, the documents are split into short passages, and for
-each passage an embedding is generated using the open source
-"all-MiniLM-L6-v2" model. The documents that are returned as search results are
-those that have the highest scored passages. Add `--show-inner-hits` to the
-command to see individual passage results as well.
+each passage a sparse embedding is generated using Elastic's ELSER v2 model.
+The documents that are returned as search results are those that have the
+highest scored passages. Add `--show-inner-hits` to the command to see
+individual passage results as well.
 """
 
 import argparse
-import asyncio
 import json
 import os
-from datetime import datetime
-from typing import List, Optional, cast
 from urllib.request import urlopen
 
-import nltk  # type: ignore
-from sentence_transformers import SentenceTransformer
+import nltk
 from tqdm import tqdm
 
 from elasticsearch_dsl import (
-    AsyncDocument,
-    AsyncSearch,
-    DenseVector,
+    Date,
+    Document,
     InnerDoc,
     Keyword,
-    M,
-    async_connections,
-    mapped_field,
+    Nested,
+    Q,
+    SparseVector,
+    Text,
+    connections,
 )
 
 DATASET_URL = "https://raw.githubusercontent.com/elastic/elasticsearch-labs/main/datasets/workplace-documents.json"
-MODEL_NAME = "all-MiniLM-L6-v2"
 
 # initialize sentence tokenizer
 nltk.download("punkt", quiet=True)
 
 
 class Passage(InnerDoc):
-    content: M[str]
-    embedding: M[List[float]] = mapped_field(DenseVector())
+    content = Text()
+    embedding = SparseVector()
 
 
-class WorkplaceDoc(AsyncDocument):
+class WorkplaceDoc(Document):
     class Index:
-        name = "workplace_documents"
+        name = "workplace_documents_sparse"
+        settings = {"default_pipeline": "elser_ingest_pipeline"}
 
-    name: M[str]
-    summary: M[str]
-    content: M[str]
-    created: M[datetime]
-    updated: M[Optional[datetime]]
-    url: M[str] = mapped_field(Keyword(required=True))
-    category: M[str] = mapped_field(Keyword(required=True))
-    passages: M[List[Passage]] = mapped_field(default=[])
+    name = Text()
+    summary = Text()
+    content = Text()
+    created = Date()
+    updated = Date()
+    url = Keyword()
+    category = Keyword()
+    passages = Nested(Passage)
 
     _model = None
 
-    @classmethod
-    def get_embedding(cls, input: str) -> List[float]:
-        if cls._model is None:
-            cls._model = SentenceTransformer(MODEL_NAME)
-        return cast(List[float], list(cls._model.encode(input)))
-
-    def clean(self) -> None:
+    def clean(self):
         # split the content into sentences
-        passages = cast(List[str], nltk.sent_tokenize(self.content))
+        passages = nltk.sent_tokenize(self.content)
 
         # generate an embedding for each passage and save it as a nested document
         for passage in passages:
-            self.passages.append(
-                Passage(content=passage, embedding=self.get_embedding(passage))
-            )
+            self.passages.append(Passage(content=passage))
 
 
-async def create() -> None:
+def create():
+
     # create the index
-    await WorkplaceDoc._index.delete(ignore_unavailable=True)
-    await WorkplaceDoc.init()
+    WorkplaceDoc._index.delete(ignore_unavailable=True)
+    WorkplaceDoc.init()
 
     # download the data
     dataset = json.loads(urlopen(DATASET_URL).read())
@@ -129,20 +135,25 @@ async def create() -> None:
             url=data["url"],
             category=data["category"],
         )
-        await doc.save()
+        doc.save()
 
 
-async def search(query: str) -> AsyncSearch[WorkplaceDoc]:
-    return WorkplaceDoc.search().knn(
-        field=WorkplaceDoc.passages.embedding,
-        k=5,
-        num_candidates=50,
-        query_vector=list(WorkplaceDoc.get_embedding(query)),
+def search(query):
+    return WorkplaceDoc.search()[:5].query(
+        "nested",
+        path="passages",
+        query=Q(
+            "text_expansion",
+            passages__content={
+                "model_id": ".elser_model_2",
+                "model_text": query,
+            },
+        ),
         inner_hits={"size": 2},
     )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     parser = argparse.ArgumentParser(description="Vector database with Elasticsearch")
     parser.add_argument(
         "--recreate-index", action="store_true", help="Recreate and populate the index"
@@ -156,18 +167,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def main() -> None:
+def main():
     args = parse_args()
 
     # initiate the default connection to elasticsearch
-    async_connections.create_connection(hosts=[os.environ["ELASTICSEARCH_URL"]])
+    connections.create_connection(hosts=[os.environ["ELASTICSEARCH_URL"]])
 
-    if args.recreate_index or not await WorkplaceDoc._index.exists():
-        await create()
+    if args.recreate_index or not WorkplaceDoc._index.exists():
+        create()
 
-    results = await search(args.query)
+    results = search(args.query)
 
-    async for hit in results:
+    for hit in results:
         print(
             f"Document: {hit.name} [Category: {hit.category}] [Score: {hit.meta.score}]"
         )
@@ -178,8 +189,8 @@ async def main() -> None:
         print("")
 
     # close the connection
-    await async_connections.get_connection().close()
+    connections.get_connection().close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -30,9 +30,33 @@ SOURCE_FILES = (
 )
 
 TYPED_FILES = (
+    "elasticsearch_dsl/async_connections.py",
+    "elasticsearch_dsl/connections.py",
+    "elasticsearch_dsl/aggs.py",
+    "elasticsearch_dsl/analysis.py",
+    "elasticsearch_dsl/document.py",
+    "elasticsearch_dsl/document_base.py",
+    "elasticsearch_dsl/exceptions.py",
+    "elasticsearch_dsl/faceted_search_base.py",
+    "elasticsearch_dsl/faceted_search.py",
+    "elasticsearch_dsl/field.py",
     "elasticsearch_dsl/function.py",
     "elasticsearch_dsl/query.py",
+    "elasticsearch_dsl/search_base.py",
+    "elasticsearch_dsl/serializer.py",
+    "elasticsearch_dsl/utils.py",
+    "elasticsearch_dsl/wrappers.py",
+    "elasticsearch_dsl/_async/document.py",
+    "elasticsearch_dsl/_sync/document.py",
+    "tests/test_connections.py",
+    "tests/test_aggs.py",
+    "tests/test_analysis.py",
+    "tests/test_field.py",
     "tests/test_query.py",
+    "tests/test_utils.py",
+    "tests/test_wrappers.py",
+    "examples/vectors.py",
+    "examples/async/vectors.py",
 )
 
 
@@ -89,7 +113,7 @@ def type_check(session):
     session.install("mypy", ".[develop]")
     errors = []
     popen = subprocess.Popen(
-        "mypy --strict elasticsearch_dsl tests",
+        "mypy --strict --implicit-reexport --explicit-package-bases elasticsearch_dsl tests examples",
         env=session.env,
         shell=True,
         stdout=subprocess.PIPE,
@@ -106,7 +130,7 @@ def type_check(session):
         if filepath in TYPED_FILES:
             errors.append(line)
     if errors:
-        session.error("\n" + "\n".join(sorted(set(errors))))
+        session.error("\n" + "\n".join(errors))
 
 
 @nox.session()

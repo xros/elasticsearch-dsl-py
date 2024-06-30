@@ -19,7 +19,7 @@ from . import connections
 from .aggs import A
 from .analysis import analyzer, char_filter, normalizer, token_filter, tokenizer
 from .document import AsyncDocument, Document
-from .document_base import InnerDoc, MetaField
+from .document_base import InnerDoc, M, MetaField, mapped_field
 from .exceptions import (
     ElasticsearchDslException,
     IllegalOperation,
@@ -42,6 +42,7 @@ from .field import (
     Boolean,
     Byte,
     Completion,
+    ConstantKeyword,
     CustomField,
     Date,
     DateRange,
@@ -93,7 +94,7 @@ from .update_by_query import AsyncUpdateByQuery, UpdateByQuery
 from .utils import AttrDict, AttrList, DslBase
 from .wrappers import Range
 
-VERSION = (8, 13, 1)
+VERSION = (8, 14, 0)
 __version__ = VERSION
 __versionstr__ = ".".join(map(str, VERSION))
 __all__ = [
@@ -113,6 +114,7 @@ __all__ = [
     "Boolean",
     "Byte",
     "Completion",
+    "ConstantKeyword",
     "CustomField",
     "Date",
     "DateHistogramFacet",
@@ -146,6 +148,7 @@ __all__ = [
     "Keyword",
     "Long",
     "LongRange",
+    "M",
     "Mapping",
     "MetaField",
     "MultiSearch",
@@ -176,6 +179,7 @@ __all__ = [
     "char_filter",
     "connections",
     "construct_field",
+    "mapped_field",
     "normalizer",
     "token_filter",
     "tokenizer",
